@@ -18,10 +18,10 @@ AS_IF([test x$enable_debug_symbol = xno],
 
 # Checks for programs.
 AC_PROG_CPP
-AC_PROG_CC([icc fcc gcc cc])
+AC_PROG_CC([nvc gcc cc])
 AC_PROG_CC_C_O
 AM_PROG_CC_C_O
-AC_PROG_FC([ifx ifort xlf90 xlf f95 f90 frt gfortran g95])
+AC_PROG_FC([nvfortran])
 AC_PROG_LN_S
 
 # Check for buggy variant of ifort.
@@ -123,13 +123,6 @@ case x$with_fftw in # (
   # do nothing
   ;;
 esac
-
-# FIXME: AC_SUBST should be used
-AS_IF([test "x$with_fftw" != "x"],
-  [FFTWROOT=$with_fftw
-   CFLAGS="$CFLAGS -I$FFTWROOT/include"
-   FCFLAGS="$FCFLAGS -I$FFTWROOT/include"
-   LDFLAGS="$LDFLAGS -L$FFTWROOT/lib -L$FFTWROOT/lib64"])
 
 ACX_BLAS
 ACX_LAPACK([lapack_exist=yes],
@@ -303,14 +296,13 @@ AM_CONDITIONAL(USE_MPI, [test "x$use_mpi" = "xyes"])
 
 AS_IF([test "x$use_mpi" = "xyes"],
 	    [mpi_result="enabled"
-	     FC_CANONICAL="$FC"
 	     FC="$MPIFC"
              FCFLAGS="-DMPI $FCFLAGS"],
 	    [mpi_result="disabled"
-	     FC_CANONICAL="$FC"])
-AC_SUBST([FC_CANONICAL])
+	     ])
 
 # optimization flags
+FCFLAGS="$FCFLAGS -fast -Minfo=accel -acc -cudalib=cufft"
 AC_DEFUN([MY_FC_OPT_ACCEPT_NATIVE],[
 AC_CACHE_CHECK([fortran compiler accepts -march=native],
 my_fc_opt_accept_native_cv_flag,
@@ -336,14 +328,7 @@ AS_IF([test x$enable_opt = xyes || test x$enable_opt = x],
          MY_FC_OPT_ACCEPT_NATIVE
          AS_IF([test x$my_fc_opt_accept_native = xyes],
                 optflag="$optflag -march=native")],
-        [case x$FC in #(
-           xmpiifort|xifort|xmpiifx|xifx)
-             optflag="-O3 -no-prec-div -xHost"
-             ;; #(
-           *)
-             optflag="-O"
-             ;;
-         esac])
+   )
    FCFLAGS="$FCFLAGS $optflag"])
 
 # Check OpenMP
@@ -396,8 +381,6 @@ LAPACK: $lapack_result
 FFT: $with_fft
 MPI: $mpi_result
 OpenMP: $enable_openmp
-FC(for erdst)=$FC
-FC_CANONICAL(for slvfe)=$FC_CANONICAL
 FCFLAGS=$FCFLAGS
 LDFLAGS=$LDFLAGS
 LIBS=$LIBS
