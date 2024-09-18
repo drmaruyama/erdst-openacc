@@ -743,8 +743,9 @@ contains
          call perf_time("kslf")
          uvrecp = recpcal_self_energy()
          call perf_time()
+      else
+         call realcal_bare(tagslt, tagpt, slvmax, uvengy)
       endif
-
       ! solute-solute self energy
       pairep = 0.0
       residual = 0.0
@@ -774,9 +775,6 @@ contains
          if(cltype == EL_PME .or. cltype == EL_PPPM) then
             ! called only when PME or PPPM, non-self interaction
             pair_real = residual_ene(tagslt, i)
-            pairep = pair_real
-         else                      ! Bare coulomb solute-solvent interaction
-            pair_real = realcal_bare(tagslt, i)
             pairep = pair_real
          endif
          !$omp atomic
