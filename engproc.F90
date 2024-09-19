@@ -735,14 +735,11 @@ contains
       if(cltype == EL_PME .or. cltype == EL_PPPM) then
          !$acc update device(uvengy)
          call recpcal_prepare_solute_acc(tagslt)
-         call perf_time("rblk")
          call realcal_acc(tagslt, tagpt, slvmax, uvengy)
-         call perf_time()
          call recpcal_energy_acc(tagslt, tagpt, slvmax, uvengy)
+         call residual_ene_acc(tagslt, tagpt, slvmax, uvengy)
          !$acc update self(uvengy)
-         call perf_time("kslf")
          uvrecp = recpcal_self_energy()
-         call perf_time()
       else
          call realcal_bare(tagslt, tagpt, slvmax, uvengy)
       endif
@@ -764,22 +761,6 @@ contains
       solute_hash = current_solute_hash
       residual = residual_ene(tagslt, tagslt)
       uvengy(0) = uvrecp + usreal + residual
-
-      ! solute-solvent pair
-      !$omp parallel do schedule(guided) private(i, k, pairep, pair_real, pair_recp)
-      do k = 1, slvmax
-         i = tagpt(k)
-         if(i == tagslt) cycle
-
-         pair_real = 0.0
-         if(cltype == EL_PME .or. cltype == EL_PPPM) then
-            ! called only when PME or PPPM, non-self interaction
-            pair_real = residual_ene(tagslt, i)
-            pairep = pair_real
-         endif
-         !$omp atomic
-         uvengy(k) = uvengy(k) + pairep
-      enddo
 
       call realcal_cleanup
    end subroutine get_uv_energy
@@ -896,6 +877,29 @@ contains
       if(i == j) epcl = epcl / 2.0   ! self-interaction
       pairep = - epcl
    end function residual_ene
+   !
+   subroutine residual_ene_acc(tagslt, tagpt, slvmax, uvengy)
+      use engmain, only: screen, volume, mol_charge, cltype, EL_COULOMB, PI
+      implicit none
+      integer, intent(in) :: tagslt, tagpt(:), slvmax
+      real, intent(inout) :: uvengy(0:slvmax)
+
+      integer :: i, k
+      real :: pairep
+
+      ! called only when PME or PPPM, non-self interaction
+!      !$omp parallel do schedule(guided) private(i, k, pairep, pair_real, pair_recp)
+      !$acc parallel loop gang vector present(uvengy, mol_charge)
+      do k = 1, slvmax
+         i = tagpt(k)
+         if(i == tagslt) cycle
+
+         pairep = - PI * mol_charge(tagslt) * mol_charge(i)  &
+              / screen / screen / volume
+         !$acc atomic
+         uvengy(k) = uvengy(k) + pairep
+      enddo
+   end subroutine residual_ene_acc
    !
    subroutine volcorrect(weight)
       use engmain, only:  sluvid, cltype, screen, mol_charge, volume, temp, &

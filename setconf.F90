@@ -656,7 +656,7 @@ contains
       allocate( mol_begin_index(nummol + 1) )
       allocate( belong_to(numatm) )
       allocate( mol_charge(nummol) )
-      !$acc enter data create(charge, mol_begin_index)
+      !$acc enter data create(charge, mol_begin_index, mol_charge)
 
       ! initial setting to zero
       bfcoord(:,:) = 0.0
@@ -838,6 +838,7 @@ contains
       do i = 1, nummol
          mol_charge(i) = sum( charge(mol_begin_index(i):mol_end_index(i)) )
       end do
+      !$acc update device(mol_charge)
 
       deallocate( pttype, ptcnt, ptsite )
    end subroutine setparam
