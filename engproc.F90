@@ -433,7 +433,8 @@ contains
          do cntdst = 1, maxdst
             call get_uv_energy(stnum, stat_weight_solute, uvengy(0:slvmax), skipcond)
             if(skipcond) cycle
-            call update_histogram(stat_weight_solute, uvengy(0:slvmax))
+!            call update_histogram(stat_weight_solute, uvengy(0:slvmax))
+            call update_histogram_acc(stat_weight_solute, uvengy(0:slvmax))
          enddo
 
          select case(slttype)
@@ -864,6 +865,110 @@ contains
 
       deallocate( insdst )
    end subroutine update_histogram
+
+   subroutine update_histogram_acc(stat_weight_solute, uvengy)
+      use engmain, only: wgtslf, estype, slttype, corrcal, selfcal, ermax, &
+         volume, temp, uvspec, &
+         slnuv, avslf, minuv, maxuv, &
+         edens, ecorr, eself, &
+         stat_weight_system, engnorm, engsmpl, &
+         voffset, voffset_initialized, &
+         SLT_SOLN, SLT_REFS_RIGID, SLT_REFS_FLEX, &
+         ES_NVT, ES_NPT, NO, YES
+      use mpiproc
+      implicit none
+      real, intent(in) :: uvengy(0:slvmax), stat_weight_solute
+      integer, allocatable, save :: insdst(:)
+      integer :: i, k, q, iduv, iduvp, pti
+      real :: factor, engnmfc, pairep, total_weight
+      logical, save :: initialized = .false.
+
+      if (.not. initialized) then
+         allocate( insdst(ermax) )
+         initialized = .true.
+      end if
+
+      engnmfc = 0.0
+
+      select case(wgtslf)
+       case(NO)
+         engnmfc = 1.0
+       case(YES)
+         if(.not. voffset_initialized) then
+            voffset = uvengy(0)
+            voffset_initialized = .true.
+         endif
+         factor = uvengy(0) - voffset  ! shifted by offset
+         select case(slttype)
+          case(SLT_SOLN)
+            engnmfc = exp(factor / temp)
+          case(SLT_REFS_RIGID, SLT_REFS_FLEX)
+            engnmfc = exp(- factor / temp)
+         end select
+       case default
+         stop "Unknown wgtslf"
+      end select
+      total_weight = stat_weight_system * stat_weight_solute
+      if(estype == ES_NPT) call volcorrect(total_weight)
+      engnmfc = engnmfc * total_weight
+      !
+      engnorm = engnorm + engnmfc      ! normalization factor
+      engsmpl = engsmpl + 1.0          ! number of sampling
+      avslf = avslf + total_weight     ! normalization without solute self-energy
+
+      ! self energy histogram
+      if(selfcal == YES) then
+         call getiduv(0, uvengy(0), iduv)
+         eself(iduv) = eself(iduv) + engnmfc
+      endif
+      minuv(0) = min(minuv(0), uvengy(0))
+      maxuv(0) = max(maxuv(0), uvengy(0))
+
+      insdst(:) = 0                              ! instantaneous histogram
+      flceng(:, cntdst) = 0.0                    ! sum of solute-solvent energy
+      flceng_stored(cntdst) = .true.
+      do k = 1, slvmax
+         i = tagpt(k)
+         if(i == tagslt) cycle
+         pti = uvspec(i)
+         if(pti <= 0) call halt_with_error('eng_cns')
+
+         pairep = uvengy(k)
+         call getiduv(pti, pairep, iduv)
+
+         ! instantaneous histogram of solute-solvent energy
+         insdst(iduv) = insdst(iduv) + 1
+         ! sum of solute-solvent energy
+         flceng(pti, cntdst) = flceng(pti, cntdst) + pairep
+
+         ! minimum and maxmium of solute-solvent energy
+         minuv(pti) = min(minuv(pti), pairep)
+         maxuv(pti) = max(maxuv(pti), pairep)
+      enddo
+
+      if(slttype == SLT_SOLN) then
+         slnuv(:) = slnuv(:) + flceng(:, cntdst) * engnmfc
+      endif
+
+      do iduv = 1, ermax
+         k = insdst(iduv)
+         if(k == 0) cycle
+         edens(iduv) = edens(iduv) + engnmfc * real(k)
+      enddo
+      if(corrcal == YES) then
+         do iduv = 1, ermax
+            k = insdst(iduv)
+            if(k == 0) cycle
+            do iduvp = 1, ermax
+               q = insdst(iduvp)
+               if(q == 0) cycle
+               ecorr(iduvp,iduv) = ecorr(iduvp,iduv)  &
+                    + engnmfc * real(k) * real(q)
+            enddo
+         enddo
+      endif
+
+   end subroutine update_histogram_acc
 
    !
    function residual_ene(i, j) result(pairep)
