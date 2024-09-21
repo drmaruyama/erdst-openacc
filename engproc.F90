@@ -24,11 +24,11 @@ module engproc
    integer :: cntdst, slvmax
    integer :: maxdst
    integer :: tagslt
-   integer, allocatable :: tagpt(:)
+   integer, allocatable, save :: tagpt(:)
 
    ! flceng needs to be output in-order
    logical, allocatable :: flceng_stored(:)
-   real, allocatable :: flceng(:, :)
+   real, allocatable, save :: flceng(:, :)
 
 contains
    !
@@ -112,7 +112,9 @@ contains
       endif
       !
       allocate( uvspec(nummol) )
+      !$acc enter data create(uvspec)
       uvspec(1:nummol) = moltype(1:nummol)
+      !$acc update device(uvspec)
       if(numslt == 1) then        ! solute is not present in reference solvent
          where(sluvid(:) /= PT_SOLVENT) uvspec(:) = 0 ! solute
          ! after the solute, slide the value of molecule type
@@ -360,13 +362,14 @@ contains
       integer :: i, k, irank
       real :: stat_weight_solute
       integer, dimension(:), allocatable :: tplst
-      real, dimension(:),    allocatable :: uvengy
+      real, dimension(:), allocatable, save :: uvengy
       logical, allocatable :: flceng_stored_g(:,:)
       real, allocatable :: flceng_g(:,:,:)
       integer :: flceng_mpikind
       real, save :: prevcl(3,3)
       logical :: skipcond
       logical, save :: pme_initialized = .false. ! NOTE: this variable is also used when PPPM is selected.
+      logical, save :: initialized = .false.
 
       call mpi_init_active_group(nactiveproc)
       call sanity_check_sluvid()
@@ -389,17 +392,20 @@ contains
             tplst(slvmax) = i
          end if
       enddo
-      allocate( tagpt(slvmax) )
-      allocate( uvengy(0:slvmax) )
-      !$acc enter data create(tagpt, uvengy)
+      if (.not. initialized) then
+         allocate( tagpt(slvmax) )
+         allocate( uvengy(0:slvmax) )
+         allocate( flceng_stored(maxdst) )
+         allocate( flceng(numslv, maxdst) )
+         !$acc enter data create(tagpt, uvengy, flceng)
+         initialized = .true.
+      end if
       tagpt(1:slvmax) = tplst(1:slvmax)  ! and copied from tplst
       !$acc update device(tagpt)
       deallocate( tplst )
-
-      allocate( flceng_stored(maxdst) )
-      allocate( flceng(numslv, maxdst) )
       flceng_stored(:) = .false.
       flceng(:,:) = 0
+      !$acc update device(flceng)
 
       if(myrank < nactiveproc) then
          ! Initialize reciprocal space - grid and charges
@@ -433,8 +439,7 @@ contains
          do cntdst = 1, maxdst
             call get_uv_energy(stnum, stat_weight_solute, uvengy(0:slvmax), skipcond)
             if(skipcond) cycle
-!            call update_histogram(stat_weight_solute, uvengy(0:slvmax))
-            call update_histogram_acc(stat_weight_solute, uvengy(0:slvmax))
+            call update_histogram(stat_weight_solute, uvengy(0:slvmax))
          enddo
 
          select case(slttype)
@@ -490,10 +495,6 @@ contains
          if (myrank == 0) flush(io_flcuv)
 #endif
       endif
-
-      !$acc exit data delete(tagpt, uvengy)
-      deallocate( tagpt, uvengy )
-      deallocate( flceng, flceng_stored )
 
       call mpi_finish_active_group()
       return
@@ -739,7 +740,7 @@ contains
          call realcal_acc(tagslt, tagpt, slvmax, uvengy)
          call recpcal_energy_acc(tagslt, tagpt, slvmax, uvengy)
          call residual_ene_acc(tagslt, tagpt, slvmax, uvengy)
-         !$acc update self(uvengy)
+!         !$acc update self(uvengy)
          uvrecp = recpcal_self_energy()
       else
          call realcal_bare(tagslt, tagpt, slvmax, uvengy)
@@ -766,124 +767,34 @@ contains
    end subroutine get_uv_energy
 
    subroutine update_histogram(stat_weight_solute, uvengy)
-      use engmain, only: wgtslf, estype, slttype, corrcal, selfcal, ermax, &
-         volume, temp, uvspec, &
-         slnuv, avslf, minuv, maxuv, &
-         edens, ecorr, eself, &
-         stat_weight_system, engnorm, engsmpl, &
-         voffset, voffset_initialized, &
-         SLT_SOLN, SLT_REFS_RIGID, SLT_REFS_FLEX, &
-         ES_NVT, ES_NPT, NO, YES
-      use mpiproc
-      implicit none
-      real, intent(in) :: uvengy(0:slvmax), stat_weight_solute
-      integer, allocatable :: insdst(:)
-      integer :: i, k, q, iduv, iduvp, pti
-      real :: factor, engnmfc, pairep, total_weight
-
-      allocate( insdst(ermax) )
-
-      engnmfc = 0.0
-
-      select case(wgtslf)
-       case(NO)
-         engnmfc = 1.0
-       case(YES)
-         if(.not. voffset_initialized) then
-            voffset = uvengy(0)
-            voffset_initialized = .true.
-         endif
-         factor = uvengy(0) - voffset  ! shifted by offset
-         select case(slttype)
-          case(SLT_SOLN)
-            engnmfc = exp(factor / temp)
-          case(SLT_REFS_RIGID, SLT_REFS_FLEX)
-            engnmfc = exp(- factor / temp)
-         end select
-       case default
-         stop "Unknown wgtslf"
-      end select
-      total_weight = stat_weight_system * stat_weight_solute
-      if(estype == ES_NPT) call volcorrect(total_weight)
-      engnmfc = engnmfc * total_weight
-      !
-      engnorm = engnorm + engnmfc      ! normalization factor
-      engsmpl = engsmpl + 1.0          ! number of sampling
-      avslf = avslf + total_weight     ! normalization without solute self-energy
-
-      ! self energy histogram
-      if(selfcal == YES) then
-         call getiduv(0, uvengy(0), iduv)
-         eself(iduv) = eself(iduv) + engnmfc
-      endif
-      minuv(0) = min(minuv(0), uvengy(0))
-      maxuv(0) = max(maxuv(0), uvengy(0))
-
-      insdst(:) = 0                              ! instantaneous histogram
-      flceng(:, cntdst) = 0.0                    ! sum of solute-solvent energy
-      flceng_stored(cntdst) = .true.
-      do k = 1, slvmax
-         i = tagpt(k)
-         if(i == tagslt) cycle
-         pti = uvspec(i)
-         if(pti <= 0) call halt_with_error('eng_cns')
-
-         pairep = uvengy(k)
-         call getiduv(pti, pairep, iduv)
-
-         ! instantaneous histogram of solute-solvent energy
-         insdst(iduv) = insdst(iduv) + 1
-         ! sum of solute-solvent energy
-         flceng(pti, cntdst) = flceng(pti, cntdst) + pairep
-
-         ! minimum and maxmium of solute-solvent energy
-         minuv(pti) = min(minuv(pti), pairep)
-         maxuv(pti) = max(maxuv(pti), pairep)
-      enddo
-
-      if(slttype == SLT_SOLN) then
-         slnuv(:) = slnuv(:) + flceng(:, cntdst) * engnmfc
-      endif
-
-      do iduv = 1, ermax
-         k = insdst(iduv)
-         if(k == 0) cycle
-         edens(iduv) = edens(iduv) + engnmfc * real(k)
-      enddo
-      if(corrcal == YES) then
-         do iduv = 1, ermax
-            k = insdst(iduv)
-            if(k == 0) cycle
-            do iduvp = 1, ermax
-               q = insdst(iduvp)
-               if(q == 0) cycle
-               ecorr(iduvp,iduv) = ecorr(iduvp,iduv) + engnmfc * real(k) * real(q)
-            enddo
-         enddo
-      endif
-
-      deallocate( insdst )
-   end subroutine update_histogram
-
-   subroutine update_histogram_acc(stat_weight_solute, uvengy)
-      use engmain, only: wgtslf, estype, slttype, corrcal, selfcal, ermax, &
-         volume, temp, uvspec, &
-         slnuv, avslf, minuv, maxuv, &
-         edens, ecorr, eself, &
-         stat_weight_system, engnorm, engsmpl, &
-         voffset, voffset_initialized, &
-         SLT_SOLN, SLT_REFS_RIGID, SLT_REFS_FLEX, &
-         ES_NVT, ES_NPT, NO, YES
+      use engmain, only: wgtslf, estype, slttype, corrcal, selfcal, &
+           numslv, ermax, volume, temp, uvspec, uvcrd, &
+           slnuv, avslf, minuv, maxuv, &
+           edens, ecorr, eself, &
+           stat_weight_system, engnorm, engsmpl, &
+           voffset, voffset_initialized, &
+           SLT_SOLN, SLT_REFS_RIGID, SLT_REFS_FLEX, &
+           ES_NVT, ES_NPT, NO, YES
       use mpiproc
       implicit none
       real, intent(in) :: uvengy(0:slvmax), stat_weight_solute
       integer, allocatable, save :: insdst(:)
-      integer :: i, k, q, iduv, iduvp, pti
+      real(8), allocatable, save :: uvpoint(:)
+      real, parameter :: infty = huge(infty)
+      integer :: i, j, k, q, iduv, iduvp, pti
+      integer, save :: pemax
       real :: factor, engnmfc, pairep, total_weight
+      real :: tmp, lmin, lmax, check
       logical, save :: initialized = .false.
 
       if (.not. initialized) then
+         pemax = ermax / numslv
          allocate( insdst(ermax) )
+         allocate( uvpoint(pemax + 1) )
+         !$acc enter data create(insdst, uvpoint)
+         uvpoint(1:pemax) = uvcrd(1:pemax)
+         uvpoint(pemax + 1) = infty
+         !$acc update device(uvpoint)
          initialized = .true.
       end if
 
@@ -907,13 +818,14 @@ contains
        case default
          stop "Unknown wgtslf"
       end select
+
       total_weight = stat_weight_system * stat_weight_solute
       if(estype == ES_NPT) call volcorrect(total_weight)
       engnmfc = engnmfc * total_weight
       !
-      engnorm = engnorm + engnmfc      ! normalization factor
-      engsmpl = engsmpl + 1.0          ! number of sampling
-      avslf = avslf + total_weight     ! normalization without solute self-energy
+      engnorm = engnorm + engnmfc    ! normalization factor
+      engsmpl = engsmpl + 1.0        ! number of sampling
+      avslf = avslf + total_weight   ! normalization without solute self-energy
 
       ! self energy histogram
       if(selfcal == YES) then
@@ -922,28 +834,39 @@ contains
       endif
       minuv(0) = min(minuv(0), uvengy(0))
       maxuv(0) = max(maxuv(0), uvengy(0))
+      ! minimum and maxmium of solute-solvent energy
+      !$acc parallel present (uvengy, uvspec)
+      do k = 1, numslv
+         tmp = minval(uvengy(1:slvmax), mask = (uvspec(:) == k))
+         minuv(k) = min(minuv(k), tmp)
+         tmp = maxval(uvengy(1:slvmax), mask = (uvspec(:) == k))
+         maxuv(k) = max(maxuv(k), tmp)
+      end do
+      !$acc end parallel
 
       insdst(:) = 0                              ! instantaneous histogram
       flceng(:, cntdst) = 0.0                    ! sum of solute-solvent energy
       flceng_stored(cntdst) = .true.
-      do k = 1, slvmax
-         i = tagpt(k)
-         if(i == tagslt) cycle
-         pti = uvspec(i)
-         if(pti <= 0) call halt_with_error('eng_cns')
-
-         pairep = uvengy(k)
-         call getiduv(pti, pairep, iduv)
-
-         ! instantaneous histogram of solute-solvent energy
-         insdst(iduv) = insdst(iduv) + 1
-         ! sum of solute-solvent energy
-         flceng(pti, cntdst) = flceng(pti, cntdst) + pairep
-
-         ! minimum and maxmium of solute-solvent energy
-         minuv(pti) = min(minuv(pti), pairep)
-         maxuv(pti) = max(maxuv(pti), pairep)
-      enddo
+      !$acc update device(insdst, flceng(:, cntdst))
+      !$acc parallel loop present(uvpoint, uvspec, tagpt, insdst, flceng, uvengy)
+      do j = 1, pemax
+         lmin = uvpoint(j)
+         lmax = uvpoint(j + 1)
+         do k = 1, slvmax
+            i = tagpt(k)
+            if(i == tagslt) cycle
+            pti = uvspec(i)
+            pairep = uvengy(k)
+            if (pairep >= lmin .and. pairep < lmax) then
+               insdst((pti - 1) * pemax + j) = &
+                    insdst((pti - 1) * pemax + j) + 1
+               ! sum of solute-solvent energy
+               flceng(pti, cntdst) = flceng(pti, cntdst) + pairep
+            end if
+         end do
+      end do
+      !$acc end parallel
+      !$acc update self(insdst, flceng(:, cntdst))
 
       if(slttype == SLT_SOLN) then
          slnuv(:) = slnuv(:) + flceng(:, cntdst) * engnmfc
@@ -967,7 +890,7 @@ contains
          enddo
       endif
 
-   end subroutine update_histogram_acc
+   end subroutine update_histogram
 
    !
    function residual_ene(i, j) result(pairep)
