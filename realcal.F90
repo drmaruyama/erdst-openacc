@@ -43,7 +43,7 @@ module realcal
    integer :: block_size(3)
 
    ! "straight" coordinate system
-   real, allocatable, save :: sitepos_normal(:, :)
+   real, allocatable :: sitepos_normal(:, :)
    real :: cell_normal(3, 3), invcell_normal(3), cell_len_normal(3)
    logical :: is_cuboid
    real, parameter :: check_rotate = 1e-8, cuboid_thres = 1e-8, cutoff_thres = 1e-4
@@ -52,19 +52,21 @@ contains
    subroutine realcal_prepare
       use engmain, only: numatm, sitepos, boxshp, SYS_PERIODIC
       implicit none
-      logical, save :: initialized = .false.
 
-      if (.not. initialized) then
-         allocate(sitepos_normal(3, numatm))
-         !$acc enter data create(sitepos_normal)
-         initialized = .true.
-      end if
+      allocate(sitepos_normal(3, numatm))
+      !$acc enter data create(sitepos_normal)
       sitepos_normal(:, :) = sitepos(:, :)
 
       ! "Straighten" box, and normalize coordinate system
       if(boxshp == SYS_PERIODIC) call normalize_periodic
       !$acc update device(sitepos_normal)
    end subroutine realcal_prepare
+
+   subroutine realcal_cleanup
+      implicit none
+      !$acc exit data delete(sitepos_normal)
+      deallocate(sitepos_normal)
+   end subroutine realcal_cleanup
 
    ! Calculate i-j interaction energy on GPU
    subroutine realcal_acc(tagslt, tagpt, slvmax, uvengy)

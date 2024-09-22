@@ -696,7 +696,7 @@ contains
          SLT_SOLN, SLT_REFS_RIGID, SLT_REFS_FLEX
       use ptinsrt, only: instslt
       use realcal, only: realcal_prepare, realcal_acc, realcal_self, &
-           realcal_bare
+           realcal_bare, realcal_cleanup
       use reciprocal, only: recpcal_prepare_solute, recpcal_self_energy, &
          recpcal_energy, recpcal_prepare_solute_acc, recpcal_energy_acc
       use mpiproc                                                      ! MPI
@@ -764,6 +764,7 @@ contains
       residual = residual_ene(tagslt, tagslt)
       uvengy(0) = uvrecp + usreal + residual
 
+      call realcal_cleanup
    end subroutine get_uv_energy
 
    subroutine update_histogram(stat_weight_solute, uvengy)
