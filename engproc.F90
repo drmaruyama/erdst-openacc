@@ -433,8 +433,8 @@ contains
          do cntdst = 1, maxdst
             call get_uv_energy(stnum, stat_weight_solute, uvengy(0:slvmax), skipcond)
             if(skipcond) cycle
-!            call update_histogram(stat_weight_solute, uvengy(0:slvmax))
-            call update_histogram_acc(stat_weight_solute, uvengy(0:slvmax))
+            call update_histogram(stat_weight_solute, uvengy(0:slvmax))
+!            call update_histogram_acc(stat_weight_solute, uvengy(0:slvmax))
          enddo
 
          select case(slttype)
