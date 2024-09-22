@@ -768,7 +768,6 @@ contains
    end subroutine get_uv_energy
 
    subroutine update_histogram(stat_weight_solute, uvengy)
-<<<<<<< HEAD
       use engmain, only: wgtslf, estype, slttype, corrcal, selfcal, &
            numslv, ermax, volume, temp, uvspec, uvcrd, &
            slnuv, avslf, minuv, maxuv, &
@@ -799,24 +798,6 @@ contains
          !$acc update device(uvpoint)
          initialized = .true.
       end if
-=======
-      use engmain, only: wgtslf, estype, slttype, corrcal, selfcal, ermax, &
-         volume, temp, uvspec, &
-         slnuv, avslf, minuv, maxuv, &
-         edens, ecorr, eself, &
-         stat_weight_system, engnorm, engsmpl, &
-         voffset, voffset_initialized, &
-         SLT_SOLN, SLT_REFS_RIGID, SLT_REFS_FLEX, &
-         ES_NVT, ES_NPT, NO, YES
-      use mpiproc
-      implicit none
-      real, intent(in) :: uvengy(0:slvmax), stat_weight_solute
-      integer, allocatable :: insdst(:)
-      integer :: i, k, q, iduv, iduvp, pti
-      real :: factor, engnmfc, pairep, total_weight
-
-      allocate( insdst(ermax) )
->>>>>>> parent of c9ba04e (Prepared histogram for OpenACC)
 
       engnmfc = 0.0
 
@@ -838,23 +819,14 @@ contains
        case default
          stop "Unknown wgtslf"
       end select
-<<<<<<< HEAD
 
-=======
->>>>>>> parent of c9ba04e (Prepared histogram for OpenACC)
       total_weight = stat_weight_system * stat_weight_solute
       if(estype == ES_NPT) call volcorrect(total_weight)
       engnmfc = engnmfc * total_weight
       !
-<<<<<<< HEAD
       engnorm = engnorm + engnmfc    ! normalization factor
       engsmpl = engsmpl + 1.0        ! number of sampling
       avslf = avslf + total_weight   ! normalization without solute self-energy
-=======
-      engnorm = engnorm + engnmfc      ! normalization factor
-      engsmpl = engsmpl + 1.0          ! number of sampling
-      avslf = avslf + total_weight     ! normalization without solute self-energy
->>>>>>> parent of c9ba04e (Prepared histogram for OpenACC)
 
       ! self energy histogram
       if(selfcal == YES) then
@@ -863,7 +835,6 @@ contains
       endif
       minuv(0) = min(minuv(0), uvengy(0))
       maxuv(0) = max(maxuv(0), uvengy(0))
-<<<<<<< HEAD
       ! minimum and maxmium of solute-solvent energy
       !$acc parallel present (uvengy, uvspec)
       do k = 1, numslv
@@ -873,13 +844,10 @@ contains
          maxuv(k) = max(maxuv(k), tmp)
       end do
       !$acc end parallel
-=======
->>>>>>> parent of c9ba04e (Prepared histogram for OpenACC)
 
       insdst(:) = 0                              ! instantaneous histogram
       flceng(:, cntdst) = 0.0                    ! sum of solute-solvent energy
       flceng_stored(cntdst) = .true.
-<<<<<<< HEAD
       !$acc update device(insdst, flceng(:, cntdst))
       !$acc parallel loop present(uvpoint, uvspec, tagpt, insdst, flceng, uvengy)
       do j = 1, pemax
@@ -900,26 +868,6 @@ contains
       end do
       !$acc end parallel
       !$acc update self(insdst, flceng(:, cntdst))
-=======
-      do k = 1, slvmax
-         i = tagpt(k)
-         if(i == tagslt) cycle
-         pti = uvspec(i)
-         if(pti <= 0) call halt_with_error('eng_cns')
-
-         pairep = uvengy(k)
-         call getiduv(pti, pairep, iduv)
-
-         ! instantaneous histogram of solute-solvent energy
-         insdst(iduv) = insdst(iduv) + 1
-         ! sum of solute-solvent energy
-         flceng(pti, cntdst) = flceng(pti, cntdst) + pairep
-
-         ! minimum and maxmium of solute-solvent energy
-         minuv(pti) = min(minuv(pti), pairep)
-         maxuv(pti) = max(maxuv(pti), pairep)
-      enddo
->>>>>>> parent of c9ba04e (Prepared histogram for OpenACC)
 
       if(slttype == SLT_SOLN) then
          slnuv(:) = slnuv(:) + flceng(:, cntdst) * engnmfc
@@ -937,20 +885,12 @@ contains
             do iduvp = 1, ermax
                q = insdst(iduvp)
                if(q == 0) cycle
-<<<<<<< HEAD
                ecorr(iduvp,iduv) = ecorr(iduvp,iduv)  &
                     + engnmfc * real(k) * real(q)
-=======
-               ecorr(iduvp,iduv) = ecorr(iduvp,iduv) + engnmfc * real(k) * real(q)
->>>>>>> parent of c9ba04e (Prepared histogram for OpenACC)
             enddo
          enddo
       endif
 
-<<<<<<< HEAD
-=======
-      deallocate( insdst )
->>>>>>> parent of c9ba04e (Prepared histogram for OpenACC)
    end subroutine update_histogram
 
    !
