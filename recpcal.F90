@@ -424,7 +424,6 @@ contains
    subroutine recpcal_prepare_solute_acc(tagslt)
       use engmain, only: ms1max, ms2max, ms3max, sitepos, invcl, numsite, splodr, charge, mol_begin_index
       use fft_iface, only: fft_ctr, fft_rtc
-      use mpiproc, only: perf_time
       implicit none
       integer, intent(in) :: tagslt
       integer :: rc1, rc2, rc3, sid, ati, cg1, cg2, cg3, stmax
@@ -435,7 +434,6 @@ contains
       real :: ts, te
       stmax = numsite(tagslt)
       allocate( splval(0:splodr-1, 3, stmax), grdval(3, stmax) )
-      call perf_time("kchg")
       call calc_spline_molecule(tagslt, stmax, splval(:,:,1:stmax), grdval(:,1:stmax))
       cnvslt(:,:,:) = 0.0
       !$acc update device(cnvslt)
@@ -459,14 +457,10 @@ contains
          end do
       end do
       !$acc end parallel
-      call perf_time()
 
-      call perf_time("kfft")
       call fft_rtc(handle_r2c, cnvslt, rcpslt)                         ! 3D-FFT
       !$acc update self(rcpslt)
-      call perf_time()
 
-      call perf_time("kslf")
       ! original form is:
       ! 0.5 * sum(engfac(:, :, :) * real(rcpslt_c(:, :, :)) * conjg(rcpslt_c(:, :, :)))
       ! where rcpslt_c(rc1, rc2, rc3) = conjg(rcpslt_buf(ms1max - rc1, ms2max - rc2, ms3max - rc3))
@@ -481,19 +475,14 @@ contains
             sum(engfac(1:ccemax, :, :) * real(rcpslt(1:ccemax, :, :) * conjg(rcpslt(1:ccemax, :, :)))) + &
             0.5 * sum(engfac(0,      :, :) * real(rcpslt(0,      :, :) * conjg(rcpslt(0,      :, :))))
       endif
-      call perf_time()
 
-      call perf_time("kuve")
       !$acc parallel loop present (engfac, rcpslt)
       do concurrent (i = rc1min:ccemax, j = rc2min:rc2max, k = rc3min:rc3max)
          rcpslt(i, j, k) = engfac(i, j, k) * rcpslt(i, j, k)
       end do
       !$acc end parallel
-      call perf_time()
 
-      call perf_time("kfft")
       call fft_ctr(handle_c2r, rcpslt, cnvslt)                    ! 3D-FFT
-      call perf_time()
 
       deallocate( splval,grdval )
    end subroutine recpcal_prepare_solute_acc
@@ -596,7 +585,7 @@ contains
 
    subroutine recpcal_energy_acc(tagslt, tagpt, slvmax, uvengy)
       use engmain, only: ms1max, ms2max, ms3max, splodr, numsite, sluvid, charge, mol_begin_index
-      use mpiproc, only: halt_with_error, perf_time
+      use mpiproc, only: halt_with_error
       implicit none
       integer, intent(in) :: tagslt, tagpt(:), slvmax
       real, intent(inout) :: uvengy(0:slvmax)

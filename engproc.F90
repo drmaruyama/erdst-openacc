@@ -754,9 +754,7 @@ contains
          ! though the self energy will not change.
          ! usreal is kept over subroutine calls during "save"
       else
-         call perf_time("rslf")
          usreal = realcal_self(tagslt) ! calculate self-interaction
-         call perf_time()
       endif
       solute_hash = current_solute_hash
       residual = residual_ene(tagslt, tagslt)
