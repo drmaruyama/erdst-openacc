@@ -133,9 +133,12 @@ contains
                      xst(:) = half_cell(:) - abs(half_cell(:) - abs(xst(:)))
                   else
                      ! Note some ops can be skipped because cell_normal is upper triangular
-                     xst(:) = xst(:) - cell_normal(:, 3) * anint(xst(3) * invcell_normal(3))
-                     xst(:) = xst(:) - cell_normal(:, 2) * anint(xst(2) * invcell_normal(2))
-                     xst(:) = xst(:) - cell_normal(:, 1) * anint(xst(1) * invcell_normal(1))
+                     xst(:) = xst(:) - cell_normal(:, 3) &
+                          * anint(xst(3) * invcell_normal(3))
+                     xst(:) = xst(:) - cell_normal(:, 2) &
+                          * anint(xst(2) * invcell_normal(2))
+                     xst(:) = xst(:) - cell_normal(:, 1) &
+                          * anint(xst(1) * invcell_normal(1))
                   end if
                endif
                dis2 = sum(xst(1:3) ** 2)
@@ -208,7 +211,7 @@ contains
                endif
                pairep = pairep + eplj + epcl
             end do
-            !$acc atomic
+            !$acc atomic update
             uvengy(k) = uvengy(k) + pairep
          end do
       enddo
@@ -353,7 +356,7 @@ contains
                endif
                pairep = pairep + eplj + epcl
             end do
-            !$acc atomic
+            !$omp atomic
             uvengy(k) = uvengy(k) + pairep
          end do
       end do

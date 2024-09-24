@@ -729,8 +729,8 @@ contains
       ! At this moment all coordinate in the system is determined
       call realcal_prepare
 
-      uvengy(:) = 0
-      uvrecp = 0.
+      uvengy(:) = 0.0
+      uvrecp = 0.0
       ! Calculate system-wide values
       if(cltype == EL_PME .or. cltype == EL_PPPM) then
          !$acc update device(uvengy)
@@ -806,9 +806,9 @@ contains
       if(estype == ES_NPT) call volcorrect(total_weight)
       engnmfc = engnmfc * total_weight
       !
-      engnorm = engnorm + engnmfc      ! normalization factor
-      engsmpl = engsmpl + 1.0          ! number of sampling
-      avslf = avslf + total_weight     ! normalization without solute self-energy
+      engnorm = engnorm + engnmfc    ! normalization factor
+      engsmpl = engsmpl + 1.0        ! number of sampling
+      avslf = avslf + total_weight   ! normalization without solute self-energy
 
       ! self energy histogram
       if(selfcal == YES) then
@@ -895,7 +895,7 @@ contains
 
          pairep = - PI * mol_charge(tagslt) * mol_charge(i)  &
               / screen / screen / volume
-         !$acc atomic
+         !$acc atomic update
          uvengy(k) = uvengy(k) + pairep
       enddo
    end subroutine residual_ene_acc

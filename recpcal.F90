@@ -452,7 +452,7 @@ contains
                   rc3 = modulo(grdval(3, sid) - cg3, ms3max)
                   factor = chr * splval(cg1, 1, sid) * splval(cg2, 2, sid) &
                      * splval(cg3, 3, sid)
-                  !$acc atomic
+                  !$acc atomic update
                   cnvslt(rc1, rc2, rc3) = cnvslt(rc1, rc2, rc3) + factor
                end do
             end do
