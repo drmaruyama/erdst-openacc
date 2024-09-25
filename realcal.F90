@@ -222,7 +222,7 @@ contains
    ! Calculate i-j interaction energy in the bare 1/r form
    subroutine realcal_bare(tagslt, tagpt, slvmax, uvengy)
       use engmain, only:  boxshp, numsite, &
-         elecut, lwljcut, upljcut, cltype, screen, charge, specatm, &
+         elecut, lwljcut, upljcut, cltype, screen, charge, mol_begin_index, &
          ljswitch, ljtype, ljtype_max, ljene_mat, ljlensq_mat, &
          SYS_NONPERIODIC, SYS_PERIODIC, EL_COULOMB, &
          LJSWT_POT_CHM, LJSWT_POT_GMX, LJSWT_FRC_CHM, LJSWT_FRC_GMX
@@ -264,7 +264,9 @@ contains
 
       ! Bare coulomb solute-solvent interaction
       ismax = numsite(tagslt)
-      !$omp parallel do schedule(guided) private(i, k, pairep, eplj, epcl, is, js, ati, atj, ljtype_i, ljtype_j, xst, dis2, rst, ljeps, ljsgm2, invr2, invr6, swth, swfac, ljsgm6, vdwa, vdwb, invr3, ljsgm3)
+!      !$omp parallel do schedule(guided) private(i, k, pairep, eplj, epcl, is, js, ati, atj, ljtype_i, ljtype_j, xst, dis2, rst, ljeps, ljsgm2, invr2, invr6, swth, swfac, ljsgm6, vdwa, vdwb, invr3, ljsgm3)
+      !$acc data pcreate(xst)
+      !$acc parallel loop collapse(2) gang vector present(uvengy, mol_begin_index, tagpt, sitepos_normal, charge, numsite)
       do k = 1, slvmax
          do is = 1, ismax
             i = tagpt(k)
@@ -272,8 +274,10 @@ contains
 
             pairep = 0.0
             do js = 1, numsite(i)
-               ati = specatm(is, tagslt)
-               atj = specatm(js,i)
+!               ati = specatm(is, tagslt)
+!               atj = specatm(js,i)
+               ati = mol_begin_index(tagslt) + (is - 1)
+               atj = mol_begin_index(i) + (js - 1)
                ljtype_i = ljtype(ati)
                ljtype_j = ljtype(atj)
                xst(:) = sitepos_normal(:,ati) - sitepos_normal(:,atj)
@@ -356,10 +360,12 @@ contains
                endif
                pairep = pairep + eplj + epcl
             end do
-            !$omp atomic
+            !$acc atomic update
             uvengy(k) = uvengy(k) + pairep
          end do
       end do
+      !$acc end parallel
+      !$acc end data
    end subroutine realcal_bare
 
    ! self-energy part, no LJ calculation performed
