@@ -109,22 +109,6 @@ AS_IF([test "x$with_mkl" != "x"],
         ])
 ])
 
-AC_ARG_WITH([fftw],
-  AS_HELP_STRING([--with-fftw[[=(fftw root, default to /usr)]]],
-    [Set fftw root directory]))
-
-case x$with_fftw in # (
-  xyes) :
-  with_fftw=/usr
-  ;; # (
-  xno) :
-  with_fftw=
-  ;; # (
-  *) :
-  # do nothing
-  ;;
-esac
-
 ACX_BLAS
 ACX_LAPACK([lapack_exist=yes],
            [lapack_exist=no])
