@@ -148,6 +148,21 @@ contains
 #endif
    end subroutine mympi_reduce_real_array
 
+   subroutine mympi_reduce_real4_array(data, data_size, operation, rootrank)
+      implicit none
+      integer, intent(in) :: data_size, operation, rootrank
+      real(kind=4), intent(inout) :: data(data_size)
+      real, allocatable :: buf(:)
+      integer :: mympi_realkind
+#ifdef MPI
+      allocate( buf(data_size) )
+      call get_mympi_realkind(kind(data), mympi_realkind)
+      call mpi_reduce(data, buf, data_size, mympi_realkind, operation, rootrank, mpi_comm_world, ierror)
+      data(:) = buf(:)
+      deallocate(buf)
+#endif
+   end subroutine mympi_reduce_real4_array
+
    subroutine mympi_reduce_real_scalar(data, operation, rootrank)
       implicit none
       integer, intent(in) :: operation, rootrank

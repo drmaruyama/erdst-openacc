@@ -561,7 +561,7 @@ contains
       if(selfcal == YES) call mympi_reduce_real_array(eself, esmax, mpi_sum, 0)
       if(slttype == SLT_SOLN) call mympi_reduce_real_array(slnuv, numslv, mpi_sum, 0)
       call mympi_reduce_real_array(edens, ermax, mpi_sum, 0)
-      if(corrcal == YES) call mympi_reduce_real_array(ecorr, (ermax * ermax), mpi_sum, 0)
+      if(corrcal == YES) call mympi_reduce_real4_array(ecorr, (ermax * ermax), mpi_sum, 0)
 #endif
 
 
