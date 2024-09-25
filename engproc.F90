@@ -729,11 +729,14 @@ contains
       ! At this moment all coordinate in the system is determined
       call realcal_prepare
 
-      uvengy(:) = 0.0
+      !$acc parallel loop present(uvengy)
+      do k = 1, slvmax
+         uvengy(k) = 0.0
+      end do
+      !$acc end parallel
       uvrecp = 0.0
       ! Calculate system-wide values
       if(cltype == EL_PME .or. cltype == EL_PPPM) then
-         !$acc update device(uvengy)
          call recpcal_prepare_solute_acc(tagslt)
          call realcal_acc(tagslt, tagpt, slvmax, uvengy)
          call recpcal_energy_acc(tagslt, tagpt, slvmax, uvengy)
