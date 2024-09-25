@@ -199,39 +199,6 @@ AM_CONDITIONAL([USE_FLUSH], [test "x$my_check_have_flush" = "xyes"])
 # set to f90 as default
 AC_FC_SRCEXT(f90)
 
-# select FFT library
-AC_ARG_WITH([fft],
-	AS_HELP_STRING([--with-fft=(fftw|mkl)],
-		[specify which FFT library to be used]),
-	[],
-	[with_fft=no]
-)
-
-# Search for fftw3 - libfftw3.a
-FFTWLIBS=
-AC_CHECK_LIB([fftw3], [dfftw_execute], [have_fftw3=yes;FFTWLIBS=-lfftw3], [have_fftw3=no], [-lm])
-have_fftw3_mp=no
-AS_IF([test "$enable_openmp" != no],
-  [AC_CHECK_LIB([fftw3_threads], [dfftw_init_threads], [have_fftw3_mp=yes;fftw3_mp=-lfftw3_threads], [], [-lfftw3 -lm])
-   AC_CHECK_LIB([fftw3_omp], [dfftw_init_threads], [have_fftw3_mp=yes;fftw3_mp=-lfftw3_omp], [], [-lfftw3 -lm $OPENMP_FCFLAGS])]
-   FFTWLIBS="$fftw3_mp $FFTWLIBS")
-AC_SUBST([FFTWLIBS])
-
-AS_IF([test "x$with_fft" == xfftw], 
-            [AS_IF([test "x$have_fftw3" == xno],
-                         [AC_MSG_FAILURE(
-                                 [--with-fft=fftw is specified, but could not find fftw3])])])
-
-AS_IF([test "x$with_fft" == xno],
-	    [AS_IF([test "x$have_fftw3" == xyes],
-	    		 [with_fft=fftw])
-             AS_IF([test "x$with_mkl" != "x"],
-                         [with_fft=mkl])])
-
-AS_IF([test "x$with_fft" != xfftw && test "x$with_fft" != xmkl],
-	    [AC_MSG_FAILURE(
-		[invalid --with-fft=<fft-type> specification, please check with --help])])
-
 # check whether mkl_dfti.f90 is accesible
 # FIXME: This may fail to detect with gfortran 4.4.0-4.4.3
 AS_IF([test "x$with_fft" = xmkl], [dnl
@@ -332,8 +299,6 @@ AS_IF([test "$enable_openmp" != "no"],
       AC_MSG_ERROR([OpenMP must be >= 3.0])])])
 
 # AM_CONDITIONAL([MPI], [test x$use_mpi = xyes])
-AM_CONDITIONAL([USE_FFTW], [test x$with_fft = xfftw])
-AM_CONDITIONAL([USE_MKL], [test x$with_fft = xmkl])
 AM_CONDITIONAL([USE_VMDPLUGIN], [test x$enable_vmdplugin = xyes || test x$enable_vmdplugin = x])
 
 AS_IF([test "x$lapack_exist" != xyes],
@@ -348,12 +313,6 @@ AC_CONFIG_FILES([Makefile])
 AC_CONFIG_HEADERS([config.h])
 AC_OUTPUT
 
-AS_IF([test "$enable_openmp" != "no" && test "$with_fft" = "fftw" && test "$have_fftw3_mp" != "yes"],
-  [AC_MSG_WARN([dnl
-OpenMP is enabled, but your FFTW does not support multithreading.
-This results in lower FFTW performance.
-It is recommended to recompile FFTW library with --enable-omp or --enable-threads; see the FFTW manual for details.])])
-  
 case "x/$mklroot" in
   */2020.?.?/*|*/2021.?.?/*|*/2022.[01].?/*)
     AS_IF([test "x$enable_openmp" = "xyes" -a "x$with_fft" = "xmkl"],
@@ -363,7 +322,6 @@ esac
 
 AC_MSG_RESULT([dnl
 LAPACK: $lapack_result
-FFT: $with_fft
 MPI: $mpi_result
 OpenMP: $enable_openmp
 FCFLAGS=$FCFLAGS
