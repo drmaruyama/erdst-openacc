@@ -741,11 +741,11 @@ contains
          call realcal_acc(tagslt, tagpt, slvmax, uvengy)
          call recpcal_energy_acc(tagslt, tagpt, slvmax, uvengy)
          call residual_ene_acc(tagslt, tagpt, slvmax, uvengy)
-         !$acc update self(uvengy)
          uvrecp = recpcal_self_energy()
       else
          call realcal_bare(tagslt, tagpt, slvmax, uvengy)
       endif
+      !$acc update self(uvengy)
       ! solute-solute self energy
       pairep = 0.0
       residual = 0.0
