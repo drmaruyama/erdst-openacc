@@ -662,9 +662,9 @@ contains
       if(corrcal == YES) then
          select case(slttype)
           case(SLT_SOLN)
-            engfile = 'corsln' // suffeng
+            engfile = 'corsln4' // suffeng
           case(SLT_REFS_RIGID, SLT_REFS_FLEX)
-            engfile = 'corref' // suffeng
+            engfile = 'corref4' // suffeng
          end select
          open(unit = cor_io, file = engfile, form = "UNFORMATTED", action = 'write')
          write(cor_io) ecorr
