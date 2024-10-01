@@ -511,7 +511,7 @@ contains
       use mpiproc                                                      ! MPI
       implicit none
       integer :: stnum, pti, j, k, iduv, division, reduce_mpikind
-      character(len=9) :: engfile
+      character(len=10) :: engfile
       character(len=3) :: suffeng
       integer, parameter :: eng_io = 51, cor_io = 52, slf_io = 53
       integer, parameter :: ave_io = 54, wgt_io = 55, uvr_io = 56
@@ -777,11 +777,15 @@ contains
       use mpiproc
       implicit none
       real, intent(in) :: uvengy(0:slvmax), stat_weight_solute
-      integer, allocatable :: insdst(:)
+      integer, allocatable, save :: insdst(:)
       integer :: i, k, q, iduv, iduvp, pti
       real :: factor, engnmfc, pairep, total_weight
+      logical, save :: initialized = .false.
 
-      allocate( insdst(ermax) )
+      if(.not. initialized) then 
+         allocate( insdst(ermax) )
+         initialized = .true.
+      end if
 
       engnmfc = 0.0
 
@@ -862,7 +866,6 @@ contains
          enddo
       endif
 
-      deallocate( insdst )
    end subroutine update_histogram
 
    !
@@ -979,7 +982,7 @@ contains
          if(rmax - rmin <= 1) then
             exit
          endif
-         rmid = (rmin + rmax - 1) / 2
+         rmid = ishft((rmin + rmax - 1), -1)
          if(v > coord(rmid)) then
             rmin = rmid + 1
          else
