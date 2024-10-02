@@ -861,7 +861,8 @@ contains
             do iduvp = 1, ermax
                q = insdst(iduvp)
                if(q == 0) cycle
-               ecorr(iduvp,iduv) = ecorr(iduvp,iduv) + engnmfc * real(k) * real(q)
+               ecorr(iduvp,iduv) = ecorr(iduvp,iduv) &
+                    + engnmfc * real(k) * real(q)
             enddo
          enddo
       endif

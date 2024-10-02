@@ -82,10 +82,12 @@ contains
       real :: pairep
       real :: reelcut, rst, dis2, invr2, invr3, invr6
       real :: eplj, epcl, xst(3), half_cell(3)
-      real :: lwljcut2, upljcut2, lwljcut3, upljcut3, lwljcut6, upljcut6
+      real :: lwljcut2, upljcut2
+      real, save :: lwljcut3, upljcut3, lwljcut6, upljcut6
       real :: ljeps, ljsgm2, ljsgm3, ljsgm6, vdwa, vdwb, swth, swfac
-      real :: repA, repB, repC, attA, attB, attC
+      real, save :: repA, repB, repC, attA, attB, attC
       integer :: ljtype_i, ljtype_j
+      logical, save :: initialized = .false.
       !
       if(cltype == EL_COULOMB) stop "cannot happen: realcal_acc is called when cltype is not 'bare coulomb'."
 
@@ -98,16 +100,19 @@ contains
          half_cell(:) = 0.0
       endif
 
-      if(ljswitch == LJSWT_FRC_CHM) then       ! force switch (CHARMM type)
-         lwljcut3 = lwljcut ** 3
-         upljcut3 = upljcut ** 3
-         lwljcut6 = lwljcut3 * lwljcut3
-         upljcut6 = upljcut3 * upljcut3
-      endif
-      if(ljswitch == LJSWT_FRC_GMX) then       ! force switch (GROMACS type)
-         call calc_gmx_switching_force_params(12, lwljcut, upljcut, repA, repB, repC)
-         call calc_gmx_switching_force_params(6,  lwljcut, upljcut, attA, attB, attC)
-      endif
+      if(.not. initialized) then
+         if(ljswitch == LJSWT_FRC_CHM) then       ! force switch (CHARMM type)
+            lwljcut3 = lwljcut ** 3
+            upljcut3 = upljcut ** 3
+            lwljcut6 = lwljcut3 * lwljcut3
+            upljcut6 = upljcut3 * upljcut3
+         endif
+         if(ljswitch == LJSWT_FRC_GMX) then       ! force switch (GROMACS type)
+            call calc_gmx_switching_force_params(12, lwljcut, upljcut, repA, repB, repC)
+            call calc_gmx_switching_force_params(6,  lwljcut, upljcut, attA, attB, attC)
+         endif
+         initialized = .true.
+      end if
 
       ! calculated only when PME or PPPM, non-self interaction
       ismax = numsite(tagslt)
@@ -285,10 +290,14 @@ contains
                   if(is_cuboid) then
                      xst(:) = half_cell(:) - abs(half_cell(:) - abs(xst(:)))
                   else
-                     ! Note some ops can be skipped because cell_normal is upper triangular
-                     xst(:) = xst(:) - cell_normal(:, 3) * anint(xst(3) * invcell_normal(3))
-                     xst(:) = xst(:) - cell_normal(:, 2) * anint(xst(2) * invcell_normal(2))
-                     xst(:) = xst(:) - cell_normal(:, 1) * anint(xst(1) * invcell_normal(1))
+                     ! Note some ops can be skipped because cell_normal is
+                     ! upper triangular
+                     xst(:) = xst(:) - cell_normal(:, 3) &
+                          * anint(xst(3) * invcell_normal(3))
+                     xst(:) = xst(:) - cell_normal(:, 2) &
+                          * anint(xst(2) * invcell_normal(2))
+                     xst(:) = xst(:) - cell_normal(:, 1) &
+                          * anint(xst(1) * invcell_normal(1))
                   end if
                endif
                dis2 = sum(xst(1:3) ** 2)
