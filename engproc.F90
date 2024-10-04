@@ -285,6 +285,7 @@ contains
       if(corrcal == YES) then
          if(ermax > ermax_limit) call warning('emax')
          allocate( ecorr(ermax, ermax) )
+         !$acc enter data create(ecorr)
       endif
 
       if(selfcal == YES)  then
@@ -321,10 +322,17 @@ contains
 
    subroutine engclear
       use engmain, only: corrcal, selfcal, slttype, SLT_SOLN, YES, &
-         edens, ecorr, eself, slnuv, avslf, engnorm, engsmpl
+         ermax, edens, ecorr, eself, slnuv, avslf, engnorm, engsmpl
       implicit none
+      integer :: i, j
       edens(:) = 0.0
-      if(corrcal == YES) ecorr(:,:) = 0.0
+      if(corrcal == YES) then
+         !$acc parallel present(ecorr)
+         do concurrent (i = 1:ermax, j = 1:ermax)
+            ecorr(i,j) = 0.0
+         end do
+         !$acc end parallel
+      end if
       if(selfcal == YES) eself(:) = 0.0
       if(slttype == SLT_SOLN) slnuv(:) = 0.0
       avslf = 0.0
@@ -510,7 +518,7 @@ contains
          SLT_SOLN, SLT_REFS_RIGID, SLT_REFS_FLEX, NO, YES
       use mpiproc                                                      ! MPI
       implicit none
-      integer :: stnum, pti, j, k, iduv, division, reduce_mpikind
+      integer :: stnum, pti, i, j, k, iduv, division, reduce_mpikind
       character(len=10) :: engfile
       character(len=3) :: suffeng
       integer, parameter :: eng_io = 51, cor_io = 52, slf_io = 53
@@ -547,7 +555,13 @@ contains
          if(selfcal == YES) eself(:) = eself(:) * voffset_scale
          if(slttype == SLT_SOLN) slnuv(:) = slnuv(:) * voffset_scale
          edens(:) = edens(:) * voffset_scale
-         if(corrcal == YES) ecorr(:, :) = ecorr(:, :) * voffset_scale
+         if(corrcal == YES) then
+            !$acc parallel present(ecorr)
+            do concurrent (i = 1:ermax, j = 1:ermax)
+               ecorr(i, j) = ecorr(i, j) * voffset_scale
+            end do
+            !$acc end parallel
+         end if
 #endif
       endif
 
@@ -561,7 +575,11 @@ contains
       if(selfcal == YES) call mympi_reduce_real_array(eself, esmax, mpi_sum, 0)
       if(slttype == SLT_SOLN) call mympi_reduce_real_array(slnuv, numslv, mpi_sum, 0)
       call mympi_reduce_real_array(edens, ermax, mpi_sum, 0)
-      if(corrcal == YES) call mympi_reduce_real4_array(ecorr, (ermax * ermax), mpi_sum, 0)
+      if(corrcal == YES) then
+         !$acc update self(ecorr)
+         call mympi_reduce_real4_array(ecorr, (ermax * ermax), mpi_sum, 0)
+         !$acc update device(ecorr)
+      end if
 #endif
 
 
@@ -579,7 +597,13 @@ contains
       ! data to be stored; only the master node matters
 
       edens(:) = edens(:) / engnorm
-      if(corrcal == YES) ecorr(:,:) = ecorr(:,:) / engnorm
+      if(corrcal == YES) then
+         !$acc parallel present(ecorr)
+         do concurrent (i = 1:ermax, j = 1:ermax)
+            ecorr(i, j) = ecorr(i, j) / engnorm
+         end do
+         !$acc end parallel
+      end if
       if(selfcal == YES) eself(:) = eself(:) / engnorm
 
       avslf = avslf / engnorm
@@ -667,6 +691,7 @@ contains
             engfile = 'corref4' // suffeng
          end select
          open(unit = cor_io, file = engfile, form = "UNFORMATTED", action = 'write')
+         !$acc update self(ecorr)
          write(cor_io) ecorr
          endfile(cor_io)
          close(cor_io)
@@ -855,6 +880,7 @@ contains
          edens(iduv) = edens(iduv) + engnmfc * real(k)
       enddo
       if(corrcal == YES) then
+         !$acc parallel loop present(ecorr)
          do iduv = 1, ermax
             k = insdst(iduv)
             if(k == 0) cycle
@@ -865,6 +891,7 @@ contains
                     + engnmfc * real(k) * real(q)
             enddo
          enddo
+         !$acc end parallel
       endif
 
    end subroutine update_histogram
