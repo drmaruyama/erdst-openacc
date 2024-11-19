@@ -16,6 +16,7 @@ import json
 import random
 import shutil
 import subprocess as sp
+import glob
 try:
     import numpy as np
     from scipy.io import FortranFile
@@ -25,9 +26,31 @@ except ModuleNotFoundError:
 
 
 class ERmodDataAverage:
-    def __init__(self):
+    def __init__(self, flag_info):
         self.short_name_dct = {'soln': 'sln', 'refs': 'ref'}
         self.ver = ''
+        self.flag_info = flag_info
+        self.add_files_d = {'soln': [], 'refs': []}
+
+    def __set_additional_file(self):
+        def __register(sys_type, add_files):
+            for add_file in add_files:
+                if add_file not in self.add_files_d[sys_type]:
+                    self.add_files_d[sys_type].append(add_file)
+            return
+
+        if self.ver == '10':
+            add_files = ['parameters_er']
+            __register('soln', add_files)
+            __register('refs', add_files)
+
+        if self.flag_info['do_ljlrc']:
+            if self.ver == '10':
+                add_files = ['parameters_er', 'SltInfo', 'MolPrm*']
+            else:
+                add_files = ['parameters_er', 'SltInfo', 'MolPrm*', 'LJTable']
+            __register('refs', add_files)
+        return
 
     def make_sample_list(self, dir_lst, sys_type):
         smpl_lst = []
@@ -53,9 +76,7 @@ class ERmodDataAverage:
 
         if not self.ver:
             self.__identify_version()
-
-        if self.ver == '10':
-            self.__put_parameters_er()
+            self.__set_additional_file()
 
         ws = self.__get_weight()
 
@@ -65,6 +86,8 @@ class ERmodDataAverage:
             self.__average_aveuv(ws)
         elif sys_type == 'refs':
             self.__average_cor(ws)
+
+        self.__copy_additional_files(self.add_files_d[sys_type])
         return True
 
     def __is_end(self):
@@ -95,10 +118,18 @@ class ERmodDataAverage:
                     self.ver = '03'
         return
 
-    def __put_parameters_er(self):
-        src = '{}/parameters_er'.format(self.dir_lst[0])
-        dst = '{}/parameters_er'.format(self.dst_dir)
-        shutil.copyfile(src, dst)
+    def __copy_additional_files(self, add_files):
+        for add_file in add_files:
+            if '*' not in add_file:
+                work_add_files = [add_file]
+            else:
+                lst = glob.glob('{}/{}'.format(self.dir_lst[0], add_file))
+                work_add_files = [temp.split('/')[-1] for temp in lst]
+
+            for work_add_file in work_add_files:
+                src = '{}/{}'.format(self.dir_lst[0], work_add_file)
+                dst = '{}/{}'.format(self.dst_dir, work_add_file)
+                shutil.copyfile(src, dst)
         return
 
     def __average_cor(self, ws):
@@ -148,7 +179,7 @@ class ERmodDataAverage:
             with open(file_path, 'r') as f:
                 with open(file_path, 'r') as f:
                     lines = f.readlines()
-                vals = lines[sel_id[1]][5:].split()
+                vals = lines[sel_id[1]].split()[1:]
             
                 if not vals_lst:
                     vals_lst = [[float(val)] for val in vals]
@@ -428,11 +459,10 @@ class ParmFEManager:
     def __make_parm_dict(self, pfe_file):
 
         def __clean_val(str_in):
-            if str_in.endswith(','):
-                temp = str_in[:-1].strip()
-            else:
-                temp = str_in.strip()
-            return temp
+            temp = str_in
+            temp = temp.split(',')[0]
+            temp = temp.split('!')[0]
+            return temp.strip()
 
 
         d = {}
@@ -453,6 +483,10 @@ class ParmFEManager:
             d['mesherr'] = 0.1
         if 'clcond' not in d:
             d['clcond'] = '\"merge\"'
+
+        # changed values
+        if 'infchk' in d:
+            d['infchk'] = '\"not\" ! changed'
 
         # set values
         d['numsln'] = 1
@@ -475,6 +509,14 @@ class ParmFEManager:
                 f.write('{} = {},\n'.format(key, val))
             f.write('/\n')
         return
+
+    def make_flag_info(self):
+        d = {}
+        if 'ljlrc' in self.parm_d and 'yes' in self.parm_d['ljlrc']:
+            d['do_ljlrc'] = 1
+        else:
+            d['do_ljlrc'] = 0
+        return d
 
 
 def make_directory_list(soln_dir_list_file, refs_dir_list_file, pfe_mngr):
@@ -600,7 +642,7 @@ def get_slvfe_output(proc=None, slvfe_file=None):
     return fenes, merrs
 
 
-def perform_bootstrap_sampling(smpl_lst_dct, work_dir_lst_dct, bs_mngr, pfe_mngr, er_avgr, n_sp, cmd_slvfe, notify_freq, leave_intr_file):
+def perform_bootstrap_sampling(smpl_lst_dct, work_dir_lst_dct, bs_mngr, pfe_mngr, er_avgr, n_sp, cmd_slvfe, notify_freq, keep_intr_file):
     n_bs = bs_mngr.get_n_bs()
 
     slvfe_fname = 'slvfe.out'
@@ -659,7 +701,7 @@ def perform_bootstrap_sampling(smpl_lst_dct, work_dir_lst_dct, bs_mngr, pfe_mngr
             for i in range(len(bs_ids)):
                 fenes, merrs = get_slvfe_output(proc=procs[i], slvfe_file=slvfe_files[i])
                 bs_mngr.store_slvfe_output(bs_ids[i], fenes, merrs)
-                if not leave_intr_file:
+                if not keep_intr_file:
                     shutil.rmtree(work_dirs[i])
                 
             bs_mngr.save_data()
@@ -687,11 +729,11 @@ def generate_averaged_distribution(smpl_lst_dct, work_dir_lst_dct, er_avgr, cmd_
     return
 
 
-def work(mode, soln_dir_list_file, refs_dir_list_file, n_bs, pfe_file, n_sp, intr_file, bs_file, cmd_slvfe, notify_freq, gen_ave_dist, leave_intr_file):
+def work(mode, soln_dir_list_file, refs_dir_list_file, n_bs, pfe_file, n_sp, intr_file, bs_file, cmd_slvfe, notify_freq, gen_ave_dist, keep_intr_file):
     list_files = [soln_dir_list_file, refs_dir_list_file]
     bs_mngr = BSManager(intr_file, n_bs, mode, list_files)
     pfe_mngr = ParmFEManager(pfe_file)
-    er_avgr = ERmodDataAverage()
+    er_avgr = ERmodDataAverage(pfe_mngr.make_flag_info())
 
     # make list of directories where original files are located
     orig_dir_lst_dct = make_directory_list(soln_dir_list_file, refs_dir_list_file, pfe_mngr)
@@ -709,7 +751,7 @@ def work(mode, soln_dir_list_file, refs_dir_list_file, n_bs, pfe_file, n_sp, int
     if not gen_ave_dist:
         # run bootstrap sampling
         print('bootstrap sampling')
-        perform_bootstrap_sampling(smpl_lst_dct, work_dir_lst_dct, bs_mngr, pfe_mngr, er_avgr, n_sp, cmd_slvfe, notify_freq, leave_intr_file)
+        perform_bootstrap_sampling(smpl_lst_dct, work_dir_lst_dct, bs_mngr, pfe_mngr, er_avgr, n_sp, cmd_slvfe, notify_freq, keep_intr_file)
 
         # result
         bs_mngr.show_statistics(pfe_mngr.get_parm_dict())
@@ -726,15 +768,15 @@ def main():
     cmd_slvfe_work, notify_freq = check_condition(args.cmd_slvfe, args.notify_freq)
     print_message(args.intr_file)
     work(args.mode, args.soln_dir_list_file, args.refs_dir_list_file, args.n_bs, args.pfe_file, \
-         args.n_sp, args.intr_file, args.bs_file, cmd_slvfe_work, notify_freq, args.gen_ave_dist, args.leave_intr_file)
+         args.n_sp, args.intr_file, args.bs_file, cmd_slvfe_work, notify_freq, args.gen_ave_dist, args.keep_intr_file)
     return
 
 
 def print_message(intr_file):
     if os.path.exists(intr_file):
-        print('intermediate data is obtained from {}'.format(intr_file))
+        print('data of bootstrap samples is obtained from {}'.format(intr_file))
     else:
-        print('intermediate data is stored in {}'.format(intr_file))
+        print('data of bootstrap samples is stored in {}'.format(intr_file))
     print()
     return
 
@@ -791,7 +833,7 @@ def get_args():
 
     parser.add_argument('-gad', '--gen_ave_dist', action='store_true',
                         help='If this argument is enabled, the bootstrap calculations are not performed and the averages of the input distribution functions are stored in the ./average directory.')
-    parser.add_argument('-lif', '--leave_intr_file', action='store_true',
+    parser.add_argument('-kif', '--keep_intr_file', action='store_true',
                         help='If this argument is enabled, the intermediate files are not deleted and are kept in the ./tmp.bs.spN directories.')
 
     parser.add_argument('-cs', '--cmd_slvfe', type=str, default='',
