@@ -390,7 +390,7 @@ contains
       use mpiproc
       use bestfit, only: rmsd_bestfit
 #ifdef MPI
-      use mpi, only: mpi_comm_world, mpi_send, mpi_recv
+      use mpi
 #endif
       implicit none
       character(len=4),  intent(in) :: caltype
@@ -574,12 +574,16 @@ contains
       integer :: ierr
 #endif
 
-      if(seed == 0) call system_clock(count = seed_in)
+      if(seed == 0) then
+         call system_clock(count = seed_in)
+      else
+         seed_in = seed
+      end if
 #ifdef MPI
       if (myrank /= 0) then
          seed_in = 0
       end if
-      call mpi_allreduce(seed_in, buf, 1, mpi_integer8, mpi_sum, mpi_comm_world, ierr)
+      call mpi_allreduce(seed_in, buf, 1, mpi_integer8, mpi_sum, mpi_comm_activeprocs, ierr)
       if(ierr /= 0) stop "Allreduce failed"
       seed_in = buf
 #endif
