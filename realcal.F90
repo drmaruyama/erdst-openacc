@@ -43,8 +43,8 @@ module realcal
    integer :: block_size(3)
 
    ! "straight" coordinate system
-   real, allocatable, save :: sitepos_normal(:, :)
-   real :: cell_normal(3, 3), invcell_normal(3), cell_len_normal(3)
+   real(kind=8), allocatable, save :: sitepos_normal(:, :)
+   real(kind=8) :: cell_normal(3, 3), invcell_normal(3), cell_len_normal(3)
    logical :: is_cuboid
    real, parameter :: check_rotate = 1e-8, cuboid_thres = 1e-8, cutoff_thres = 1e-4
 
@@ -538,7 +538,6 @@ contains
       call make_cell_uppertriangular
 
       call normalize_cell_vector
-
 
       n = size(sitepos, 2)
 
